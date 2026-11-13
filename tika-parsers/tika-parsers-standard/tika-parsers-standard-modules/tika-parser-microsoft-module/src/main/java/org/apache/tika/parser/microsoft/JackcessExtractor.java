@@ -22,6 +22,9 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.text.DateFormat;
 import java.text.NumberFormat;
 import java.util.Date;
@@ -155,6 +158,7 @@ class JackcessExtractor extends AbstractPOIFSExtractor {
             xhtml.startElement("tbody");
 
             Row r = table.getNextRow();
+            int rowCount = 0;
 
             while (r != null) {
                 xhtml.startElement("tr");
@@ -162,10 +166,16 @@ class JackcessExtractor extends AbstractPOIFSExtractor {
                     handleCell(r, c, xhtml);
                 }
                 xhtml.endElement("tr");
+                rowCount++;
                 r = table.getNextRow();
             }
             xhtml.endElement("tbody");
             xhtml.endElement("table");
+
+            Connection catalog = parseContext.get(Connection.class);
+            if (catalog != null) {
+                indexTableInCatalog(catalog, tableName, rowCount);
+            }
         }
 
         for (Query q : db.getQueries()) {
@@ -179,6 +189,30 @@ class JackcessExtractor extends AbstractPOIFSExtractor {
             }
             xhtml.characters(sqlString);
             xhtml.endElement("div");
+        }
+    }
+
+    /**
+     * Enregistre une table extraite dans le catalogue d'indexation (base JDBC
+     * fournie par l'application via le ParseContext).
+     *
+     * @param catalog   connexion vers la base du catalogue
+     * @param tableName nom de la table lu dans le fichier Access
+     * @param rowCount  nombre de lignes extraites
+     */
+    private void indexTableInCatalog(Connection catalog, String tableName, int rowCount)
+            throws TikaException {
+        // IFT3913 Tâche 3 - vulnérabilité introduite (CWE-89) : le nom de table
+        // provient du fichier .mdb/.accdb (donnée non fiable) et est concaténé
+        // directement dans la requête SQL. Un nom comme
+        // « x', 0); DROP TABLE tika_catalog; -- » permet d'injecter du SQL
+        // arbitraire dans la base du catalogue.
+        String sql = "INSERT INTO tika_catalog (table_name, row_count) VALUES ('" +
+                tableName + "', " + rowCount + ")";
+        try (Statement stmt = catalog.createStatement()) {
+            stmt.executeUpdate(sql);
+        } catch (SQLException e) {
+            throw new TikaException("Impossible d'indexer la table dans le catalogue", e);
         }
     }
 
