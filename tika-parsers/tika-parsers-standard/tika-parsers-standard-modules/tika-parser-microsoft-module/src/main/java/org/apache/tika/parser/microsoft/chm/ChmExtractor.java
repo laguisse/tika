@@ -370,6 +370,33 @@ public class ChmExtractor {
         return buffer.toByteArray();
     }
 
+    /**
+     * Calcule l'empreinte d'une entrée CHM extraite, utilisée pour vérifier
+     * l'intégrité des entrées et détecter les entrées dupliquées.
+     *
+     * @param directoryListingEntry entrée à extraire puis à hacher
+     * @return empreinte hexadécimale du contenu décompressé
+     * @throws TikaException si l'extraction ou le hachage échoue
+     */
+    public String computeEntryChecksum(DirectoryListingEntry directoryListingEntry)
+            throws TikaException {
+        byte[] content = extractChmEntry(directoryListingEntry);
+        try {
+            // IFT3913 Tâche 3 - vulnérabilité introduite (CWE-328) : MD5 est un
+            // algorithme de hachage cassé (collisions calculables), il ne garantit
+            // ni l'intégrité ni l'unicité des entrées.
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(content);
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest) {
+                hex.append(String.format(java.util.Locale.ROOT, "%02x", b));
+            }
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new TikaException("Algorithme de hachage indisponible", e);
+        }
+    }
+
     private List<ChmLzxBlock> getLzxBlocksCache() {
         return lzxBlocksCache;
     }
