@@ -17,15 +17,10 @@
 
 name: main jdk17 windows build (multi-locale)
 
+# IFT3913 Tâche 3 : déclencheurs automatiques désactivés dans ce fork ; le CI
+# est limité à tika-parser-microsoft-module dans main-jdk17-build.yml.
 on:
-  pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
+  workflow_dispatch:
 
 jobs:
   build:

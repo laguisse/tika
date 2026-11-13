@@ -17,12 +17,10 @@
 
 name: Docker snapshot - tika-server and tika-grpc
 
+# IFT3913 Tâche 3 : déclencheurs automatiques désactivés dans ce fork ; le CI
+# est limité à tika-parser-microsoft-module dans main-jdk17-build.yml.
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
+  workflow_dispatch:
 
 jobs:
   # Gate: publish snapshot images ONLY for -SNAPSHOT versions. The
