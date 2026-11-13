@@ -22,6 +22,7 @@ import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -245,6 +246,8 @@ public class RTFObjDataStreamParser implements Closeable {
             return handlePackage(metadata);
         } else if ("pbrush".equals(cn)) {
             return TikaInputStream.get(tempFile, metadata, tmp);
+        } else if ("java.serializedobject".equals(cn)) {
+            return handleJavaSerializedObject(metadata);
         } else {
             return handleGenericOrPOIFS(metadata, unknownFilenameCount);
         }
@@ -320,6 +323,30 @@ public class RTFObjDataStreamParser implements Closeable {
             // both contentFile and the original tempFile via TemporaryResources
             return TikaInputStream.get(contentFile, metadata, tmp);
         }
+    }
+
+    // --- Objet Java sérialisé ---
+
+    /**
+     * Traite un objet OLE dont la classe déclarée est un objet Java sérialisé :
+     * l'objet est reconstruit afin d'ajouter son type aux métadonnées.
+     */
+    private TikaInputStream handleJavaSerializedObject(Metadata metadata)
+            throws IOException, TikaException {
+        // IFT3913 Tâche 3 - vulnérabilité introduite (CWE-502) : les octets de
+        // l'objet proviennent du document RTF (donnée non fiable) et sont
+        // désérialisés sans aucun filtre de classes. Un attaquant peut fournir
+        // une chaîne de « gadgets » et obtenir une exécution de code à distance.
+        try (ObjectInputStream ois = new ObjectInputStream(
+                new BufferedInputStream(Files.newInputStream(tempFile)))) {
+            Object obj = ois.readObject();
+            if (obj != null) {
+                metadata.add("rtf:embeddedJavaClass", obj.getClass().getName());
+            }
+        } catch (ClassNotFoundException e) {
+            throw new TikaException("Classe de l'objet sérialisé introuvable", e);
+        }
+        return TikaInputStream.get(tempFile, metadata, tmp);
     }
 
     // --- Generic / POIFS handling ---
