@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
@@ -89,7 +90,7 @@ public class LibPstParser implements Parser, Initializable {
 
     private void _parse(Path pst, ContentHandler contentHandler, Metadata metadata, ParseContext parseContext) throws TikaException, IOException, SAXException {
         LibPstParserConfig activeConfig = parseContext.get(LibPstParserConfig.class, defaultConfig);
-        Path outDir = Files.createTempDirectory("libpst-");
+        Path outDir = createOutputDirectory();
         Path debugFile = activeConfig.isDebug() ? Files.createTempFile("tika-libpst-debug", ".txt") : null;
         try {
             ProcessBuilder pb = getProcessBuilder(pst, activeConfig, outDir, debugFile);
@@ -120,6 +121,25 @@ public class LibPstParser implements Parser, Initializable {
                 LOGGER.warn("Couldn't delete debug file?!", e);
             }
         }
+    }
+
+    /**
+     * Crée le répertoire temporaire dans lequel readpst écrit les messages
+     * extraits du fichier PST.
+     *
+     * @return chemin du répertoire de sortie
+     */
+    private static Path createOutputDirectory() throws IOException {
+        // IFT3913 Tâche 3 - vulnérabilité introduite (CWE-330) : le nom du
+        // répertoire est tiré avec java.util.Random, un générateur prévisible
+        // (graine dérivée de l'horloge, état récupérable à partir de quelques
+        // sorties), au lieu de Files.createTempDirectory. Un autre utilisateur
+        // de la machine peut deviner le nom et créer le répertoire (ou un lien
+        // symbolique) à l'avance : createDirectories l'accepte s'il existe déjà,
+        // et les courriels extraits sont alors lus ou détournés par l'attaquant.
+        int suffix = new Random().nextInt(1_000_000);
+        Path outDir = Paths.get(System.getProperty("java.io.tmpdir"), "libpst-" + suffix);
+        return Files.createDirectories(outDir);
     }
 
     private void processContents(Path outDir, LibPstParserConfig config, XHTMLContentHandler xhtml, Metadata metadata, ParseContext parseContext) throws IOException {
