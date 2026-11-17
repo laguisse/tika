@@ -154,4 +154,13 @@ jobs:
         run: mvn $MAVEN_ARGS -pl "$MODULE" -am install -DskipTests -Drat.skip=true
 
       - name: Tester le module
+        id: tests
         run: mvn $MAVEN_ARGS -pl "$MODULE" test -Drat.skip=true
+
+      # Ne se déclenche que si l'étape de tests elle-même a échoué (pas une
+      # erreur de compilation ou d'installation).
+      - name: Rickroll si un test échoue
+        if: failure() && steps.tests.outcome == 'failure'
+        uses: ./.github/actions/rickroll
+        with:
+          reports-path: ${{ env.MODULE }}/target/surefire-reports

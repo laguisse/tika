@@ -1,0 +1,71 @@
+# IFT3913 - Tâche 3 : action réutilisable qui « rickroll » l'équipe quand un
+# test échoue. Action composite (aucune dépendance externe) : elle écrit un
+# résumé dans la page de l'exécution, ajoute une annotation d'erreur et liste
+# les tests en échec trouvés dans les rapports Surefire.
+
+name: 'Rickroll'
+description: "Rickroll quand un test échoue : résumé, annotation et liste des tests en échec"
+author: 'IFT3913 - Tâche 3'
+
+inputs:
+  reports-path:
+    description: 'Dossier contenant les rapports Surefire (*.txt)'
+    required: false
+    default: 'target/surefire-reports'
+  video-url:
+    description: 'URL de la vidéo'
+    required: false
+    default: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Rickroll
+      shell: bash
+      env:
+        # Entrées passées par env (jamais interpolées dans le script).
+        REPORTS_PATH: ${{ inputs.reports-path }}
+        VIDEO_URL: ${{ inputs.video-url }}
+      run: |
+        # Messages choisis au hasard à chaque exécution.
+        MESSAGES=(
+          "Un test a échoué... et vous venez de vous faire rickroller."
+          "Le build est rouge. Rick Astley, lui, ne vous laissera jamais tomber."
+          "Assertion échouée. Pour vous consoler, une petite vidéo vous attend."
+          "Vos tests vous ont abandonné. Rick, jamais."
+        )
+        MSG="${MESSAGES[$((RANDOM % ${#MESSAGES[@]}))]}"
+
+        # Tests en échec d'après les rapports Surefire.
+        FAILED=""
+        if [ -d "$REPORTS_PATH" ]; then
+          FAILED=$(grep -h -E '<<< (FAILURE|ERROR)!' "$REPORTS_PATH"/*.txt 2>/dev/null \
+                   | grep -v '^Tests run' | sed -E 's/ -- Time elapsed.*//' | sort -u)
+        fi
+
+        # Journal de l'étape.
+        echo "=============================================="
+        echo "  NEVER GONNA GIVE YOU UP - Rick Astley"
+        echo "  $MSG"
+        echo "  $VIDEO_URL"
+        echo "=============================================="
+
+        # Annotation visible dans la page de l'exécution et sur le commit.
+        echo "::error title=Rickroll ::$MSG $VIDEO_URL"
+
+        # Résumé de l'exécution.
+        {
+          echo "## 🎵 Vous venez de vous faire rickroller !"
+          echo
+          echo "**$MSG**"
+          echo
+          echo "[![Rick Astley - Never Gonna Give You Up](https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg)]($VIDEO_URL)"
+          echo
+          if [ -n "$FAILED" ]; then
+            echo "### Tests en échec"
+            echo
+            echo "$FAILED" | sed 's/^/- `/; s/$/`/'
+          else
+            echo "_Aucun rapport Surefire trouvé dans \`$REPORTS_PATH\`._"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
