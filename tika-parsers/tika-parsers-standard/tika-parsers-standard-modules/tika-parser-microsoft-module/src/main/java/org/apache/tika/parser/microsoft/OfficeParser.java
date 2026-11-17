@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,6 +29,9 @@ import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
 
 import org.apache.poi.hdgf.extractor.VisioTextExtractor;
 import org.apache.poi.hpbf.extractor.PublisherTextExtractor;
@@ -278,6 +282,12 @@ public class OfficeParser extends AbstractOfficeParser {
                         throw new EncryptedDocumentException();
                     }
 
+                    // Mot de passe valide fourni par l'application : on le conserve
+                    // chiffré dans les métadonnées pour les documents intégrés.
+                    if (!Decryptor.DEFAULT_PASSWORD.equals(password)) {
+                        metadata.set(PROTECTED_PASSWORD_KEY, protectPassword(password));
+                    }
+
                     // Decrypt the OLE2 tis, and delegate the resulting OOXML
                     //  file to the regular OOXML parser for normal handling
                     OOXMLParser parser = new OOXMLParser();
@@ -309,6 +319,40 @@ public class OfficeParser extends AbstractOfficeParser {
 
     private void setType(Metadata metadata, MediaType type) {
         metadata.set(Metadata.CONTENT_TYPE, type.toString());
+    }
+
+    /** Clé de métadonnée du mot de passe chiffré. */
+    static final String PROTECTED_PASSWORD_KEY = "office:protectedPassword";
+
+    private static SecretKey passwordCacheKey;
+
+    private static synchronized SecretKey getPasswordCacheKey()
+            throws GeneralSecurityException {
+        if (passwordCacheKey == null) {
+            KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+            keyGenerator.init(128);
+            passwordCacheKey = keyGenerator.generateKey();
+        }
+        return passwordCacheKey;
+    }
+
+    /**
+     * Chiffre le mot de passe d'un document afin de le conserver dans les
+     * métadonnées sans l'exposer en clair.
+     *
+     * @param password mot de passe valide du document
+     * @return mot de passe chiffré, encodé en Base64
+     */
+    static String protectPassword(String password) throws GeneralSecurityException {
+        // IFT3913 Tâche 3 - vulnérabilité introduite (CWE-327) : AES en mode ECB.
+        // ECB chiffre chaque bloc indépendamment, sans vecteur d'initialisation :
+        // deux mots de passe identiques produisent toujours le même texte chiffré.
+        // On peut ainsi repérer les documents qui partagent un mot de passe et
+        // monter des attaques par dictionnaire sans connaître la clé.
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, getPasswordCacheKey());
+        byte[] encrypted = cipher.doFinal(password.getBytes(StandardCharsets.UTF_8));
+        return Base64.getEncoder().encodeToString(encrypted);
     }
 
     public enum POIFSDocumentType {
