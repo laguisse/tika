@@ -17,6 +17,9 @@
 package org.apache.tika.parser.microsoft.xml;
 
 import java.io.IOException;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
 
 import org.xml.sax.Attributes;
 import org.xml.sax.ContentHandler;
@@ -40,7 +43,6 @@ import org.apache.tika.sax.TaggedContentHandler;
 import org.apache.tika.sax.TeeContentHandler;
 import org.apache.tika.sax.XHTMLBalancingHandler;
 import org.apache.tika.sax.XHTMLContentHandler;
-import org.apache.tika.utils.XMLReaderUtils;
 
 
 public abstract class AbstractXML2003Parser implements Parser {
@@ -103,9 +105,20 @@ public abstract class AbstractXML2003Parser implements Parser {
             //need to get new SAXParser because
             //an attachment might require another SAXParser
             //mid-parse
-            XMLReaderUtils.getSAXParser().parse(tis,
+            // IFT3913 Tâche 3 - vulnérabilité introduite (CWE-611) : le parseur
+            // durci XMLReaderUtils.getSAXParser() est remplacé par une fabrique
+            // SAX standard, sans désactiver les DTD ni les entités externes.
+            // Un document XML 2003 piégé (<!DOCTYPE ... SYSTEM "file:///etc/passwd">)
+            // permet alors de lire des fichiers locaux ou d'émettre des requêtes
+            // réseau (SSRF) depuis le serveur qui exécute Tika.
+            SAXParserFactory factory = SAXParserFactory.newInstance();
+            factory.setNamespaceAware(true);
+            SAXParser saxParser = factory.newSAXParser();
+            saxParser.parse(tis,
                     new EmbeddedContentHandler(
                             getContentHandler(tagged, metadata, context)));
+        } catch (ParserConfigurationException e) {
+            throw new TikaException("Impossible de configurer le parseur XML", e);
         } catch (SAXException e) {
             WriteLimitReachedException.throwIfWriteLimitReached(e);
             // Close anything the aborted parse left open, then propagate.
